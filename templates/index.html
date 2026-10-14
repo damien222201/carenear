@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel narrow">
+  <h1>Report a status</h1>
+  <p class="sub">Help others find care right now. {{ total_reports }} reports logged so far.</p>
+
+  <form method="POST" action="{{ url_for('report') }}" class="form">
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" required placeholder="you@email.com">
+    <p class="hint">Used only to prevent spam — never shown publicly.</p>
+
+    <div class="grid2">
+      <div>
+        <label for="state">State</label>
+        <select id="state" name="state" required>
+          <option value="" disabled selected>Select state</option>
+          {% for s in states %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="place_type">Type</label>
+        <select id="place_type" name="place_type" required>
+          <option value="" disabled selected>Select type</option>
+          {% for code, name in place_types.items() %}<option value="{{ code }}">{{ name }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <label for="area">Area / street</label>
+    <input type="text" id="area" name="area" required placeholder="e.g. Ikeja GRA, or Allen Avenue">
+
+    <label for="place_name">Name</label>
+    <input type="text" id="place_name" name="place_name" required placeholder="e.g. HealthPlus Pharmacy, Allen Avenue">
+
+    <label>Current status</label>
+    <div class="yn-toggle">
+      <input type="radio" id="statusOpen" name="status" value="open" checked>
+      <label for="statusOpen" class="yn-label open">Open now</label>
+      <input type="radio" id="statusClosed" name="status" value="closed">
+      <label for="statusClosed" class="yn-label closed">Closed now</label>
+    </div>
+
+    <label class="checkbox-label"><input type="checkbox" name="is_24hr" value="yes"> Open 24 hours (every day)</label>
+
+    <label>Pin the location on the map (optional, but helps others)</label>
+    <div id="pickerMap"></div>
+    <input type="hidden" id="lat" name="lat">
+    <input type="hidden" id="lon" name="lon">
+    <p class="hint" id="pinHint">Click the map to drop a pin, or tap "Use my location" below.</p>
+    <button type="button" class="btn-secondary" id="useLocationBtn">📍 Use my location</button>
+
+    <label for="note">Note (optional)</label>
+    <textarea id="note" name="note" rows="2" placeholder="e.g. has malaria drugs in stock, long queue"></textarea>
+
+    <button type="submit" class="btn-primary">Submit report</button>
+  </form>
+</section>
+
+<script>
+  const map = L.map('pickerMap').setView([9.0820, 8.6753], 6); // Nigeria-ish center
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors', maxZoom: 18,
+  }).addTo(map);
+
+  let marker = null;
+  function setPin(lat, lon){
+    document.getElementById('lat').value = lat;
+    document.getElementById('lon').value = lon;
+    if(marker) map.removeLayer(marker);
+    marker = L.marker([lat, lon]).addTo(map);
+    document.getElementById('pinHint').textContent = 'Pin set at ' + lat.toFixed(4) + ', ' + lon.toFixed(4);
+  }
+
+  map.on('click', (e)=> setPin(e.latlng.lat, e.latlng.lng));
+
+  document.getElementById('useLocationBtn').addEventListener('click', ()=>{
+    if(!navigator.geolocation){
+      document.getElementById('pinHint').textContent = 'Geolocation is not available in this browser.';
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos)=>{
+        setPin(pos.coords.latitude, pos.coords.longitude);
+        map.setView([pos.coords.latitude, pos.coords.longitude], 15);
+      },
+      ()=>{ document.getElementById('pinHint').textContent = 'Could not get your location — click the map instead.'; }
+    );
+  });
+</script>
+
+<style>
+  #pickerMap{ height:260px; border-radius:4px; margin-top:6px; border:1px solid var(--line); }
+  .checkbox-label{ display:flex; align-items:center; gap:8px; font-family:'IBM Plex Sans',sans-serif; text-transform:none; font-size:13.5px; color:var(--ink); margin:14px 0; letter-spacing:0; }
+  .checkbox-label input{ width:auto; }
+  .yn-toggle{ display:flex; gap:10px; margin-top:4px; }
+  .yn-toggle input{ display:none; }
+  .yn-label{ margin:0; flex:1; text-align:center; padding:9px; border:1px solid var(--line); border-radius:3px; cursor:pointer; font-family:'IBM Plex Mono',monospace; font-size:12.5px; color:var(--ink-soft);}
+  .yn-toggle input:checked + .yn-label.open{ background:rgba(63,174,107,0.18); border-color:var(--green); color:var(--green); font-weight:600;}
+  .yn-toggle input:checked + .yn-label.closed{ background:rgba(217,87,75,0.18); border-color:var(--red); color:var(--red); font-weight:600;}
+</style>
+{% endblock %}

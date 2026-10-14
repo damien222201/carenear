@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <h1>Find nearby</h1>
+  <p class="sub">Reported pharmacies, hospitals, and clinics — freshest and open first.</p>
+
+  <form method="GET" action="{{ url_for('browse') }}" class="form inline-form">
+    <select name="state" required>
+      <option value="" disabled {{ 'selected' if not state }}>Select state</option>
+      {% for s in states %}<option value="{{ s }}" {{ 'selected' if s == state }}>{{ s }}</option>{% endfor %}
+    </select>
+    <select name="place_type">
+      <option value="">All types</option>
+      {% for code, name in place_types.items() %}<option value="{{ code }}" {{ 'selected' if code == place_type }}>{{ name }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn-primary small">Browse</button>
+  </form>
+
+  {% if state %}
+    <button type="button" class="btn-secondary" id="useLocationBtn" style="margin-bottom:14px;">📍 Use my location to sort by distance</button>
+    <div id="map"></div>
+
+    {% if results %}
+      <div class="place-list" id="placeList">
+        {% for item in results %}
+        <div class="place-card {{ 'stale' if item.is_stale }}" data-lat="{{ item.lat or '' }}" data-lon="{{ item.lon or '' }}">
+          <div class="place-card-top">
+            <div>
+              <strong>{{ item.place_name }}</strong>
+              <span class="type-tag">{{ place_types[item.place_type] }}</span>
+              {% if item.is_24hr %}<span class="hr24-tag">24HR</span>{% endif %}
+            </div>
+            <div class="status-pill {{ item.latest_status }} {{ 'stale' if item.is_stale }}">
+              {{ "● Open" if item.latest_status == "open" else "● Closed" }}
+            </div>
+          </div>
+          <div class="place-meta">
+            {{ item.area }} ·
+            {{ item.last_report_at.strftime('%d %b, %H:%M') }} UTC
+            {% if item.is_stale %} · <span class="stale-tag">over 6h old — may be outdated</span>{% endif %}
+            · {{ item.report_count }} report{{ 's' if item.report_count != 1 }}
+            <span class="distance-tag" style="display:none;"></span>
+          </div>
+          {% if item.note %}<div class="place-note">"{{ item.note }}"</div>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="empty-note">No reports yet for {{ state }}. Be the first to <a href="{{ url_for('index') }}">report one</a>.</p>
+    {% endif %}
+  {% endif %}
+</section>
+
+{% if state %}
+<script>
+  const center = [{{ center[0] }}, {{ center[1] }}];
+  const map = L.map('map').setView(center, 7);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors', maxZoom: 18,
+  }).addTo(map);
+
+  const statusColors = { open: '#3FAE6B', closed: '#D9574B' };
+  document.querySelectorAll('.place-card').forEach(card=>{
+    const lat = parseFloat(card.dataset.lat), lon = parseFloat(card.dataset.lon);
+    if(isNaN(lat) || isNaN(lon)) return;
+    const isStale = card.classList.contains('stale');
+    const color = isStale ? '#8F97A6' : (card.querySelector('.status-pill').classList.contains('open') ? statusColors.open : statusColors.closed);
+    L.circleMarker([lat, lon], { radius: 8, color: color, fillColor: color, fillOpacity: 0.8 })
+      .addTo(map)
+      .bindPopup('<strong>' + card.querySelector('strong').textContent + '</strong>');
+  });
+
+  function haversineKm(lat1, lon1, lat2, lon2){
+    const R = 6371;
+    const dLat = (lat2-lat1) * Math.PI/180, dLon = (lon2-lon1) * Math.PI/180;
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  document.getElementById('useLocationBtn').addEventListener('click', ()=>{
+    if(!navigator.geolocation){ alert('Geolocation is not available in this browser.'); return; }
+    navigator.geolocation.getCurrentPosition((pos)=>{
+      const userLat = pos.coords.latitude, userLon = pos.coords.longitude;
+      map.setView([userLat, userLon], 13);
+      L.marker([userLat, userLon]).addTo(map).bindPopup('You are here').openPopup();
+
+      const list = document.getElementById('placeList');
+      const cards = Array.from(document.querySelectorAll('.place-card'));
+      cards.forEach(card=>{
+        const lat = parseFloat(card.dataset.lat), lon = parseFloat(card.dataset.lon);
+        const tag = card.querySelector('.distance-tag');
+        if(!isNaN(lat) && !isNaN(lon)){
+          const dist = haversineKm(userLat, userLon, lat, lon);
+          card.dataset.distance = dist;
+          tag.textContent = ' · ' + dist.toFixed(1) + ' km away';
+          tag.style.display = '';
+        } else {
+          card.dataset.distance = Infinity;
+        }
+      });
+      cards.sort((a,b)=> parseFloat(a.dataset.distance) - parseFloat(b.dataset.distance));
+      cards.forEach(c => list.appendChild(c));
+    }, ()=> alert('Could not get your location.'));
+  });
+</script>
+{% endif %}
+{% endblock %}
